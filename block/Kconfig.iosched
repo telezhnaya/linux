@@ -12,6 +12,12 @@ config IOSCHED_NOOP
 	  that do their own scheduling and require only minimal assistance from
 	  the kernel.
 
+config IOSCHED_OLYA
+	bool
+	default y
+	---help---
+	  My description!
+
 config IOSCHED_DEADLINE
 	tristate "Deadline I/O scheduler"
 	default y
@@ -41,7 +47,7 @@ config CFQ_GROUP_IOSCHED
 
 choice
 	prompt "Default I/O scheduler"
-	default DEFAULT_CFQ
+	default DEFAULT_OLYA
 	help
 	  Select the I/O scheduler which will be used by default for all
 	  block devices.
@@ -51,6 +57,9 @@ choice
 
 	config DEFAULT_CFQ
 		bool "CFQ" if IOSCHED_CFQ=y
+	
+	config DEFAULT_OLYA
+		bool "olya" if IOSCHED_OLYA=y
 
 	config DEFAULT_NOOP
 		bool "No-op"
@@ -62,6 +71,7 @@ config DEFAULT_IOSCHED
 	default "deadline" if DEFAULT_DEADLINE
 	default "cfq" if DEFAULT_CFQ
 	default "noop" if DEFAULT_NOOP
+	default "olya" if DEFAULT_OLYA
 
 endmenu
 
