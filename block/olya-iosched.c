@@ -34,15 +34,15 @@ static int noop_dispatch(struct request_queue *q, int force)
 
 int const buffer_size = 20;
 int statistics[20];
-bool first_time = true;
+bool first_add = true;
 
 static void noop_add_request(struct request_queue *q, struct request *rq)
 {
-	id = q->id;
-	if (first_time)
+	int id = q->id;
+	if (first_add)
 	{
 		memset(statistics, 0, sizeof(int)*buffer_size);
-		first_time = false;
+		first_add = false;
 	}
 	if (id >= buffer_size)
 		printk("PANIC, id=%d", id);
@@ -50,7 +50,8 @@ static void noop_add_request(struct request_queue *q, struct request *rq)
 	{
 		statistics[id]++;
 		if (statistics[id] % 1000 == 1)
-			printk("request!, id=%d, count=%d\n", id, statistics[id]);
+			printk("request!, disk_name=%s, queue_id=%d, count=%d\n", 
+				rq->rq_disk->disk_name, id, statistics[id]);
 	}
 
 	struct noop_data *nd = q->elevator->elevator_data;
@@ -77,28 +78,34 @@ noop_latter_request(struct request_queue *q, struct request *rq)
 	return list_entry(rq->queuelist.next, struct request, queuelist);
 }
 
+bool first_init = true;
+struct elevator_queue *eq;
+
 static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 {
-	printk("hello %s, id=%d\n", e->elevator_name, q->id);
-	struct noop_data *nd;
-	struct elevator_queue *eq;
+	if (first_init)
+	{
+		struct noop_data *nd;
+		//first_init = false; // does not work with it
+		eq = elevator_alloc(q, e);
+		if (!eq)
+			return -ENOMEM;
 
-	eq = elevator_alloc(q, e);
-	if (!eq)
-		return -ENOMEM;
+		nd = kmalloc_node(sizeof(*nd), GFP_KERNEL, q->node);
+		if (!nd) {
+			kobject_put(&eq->kobj);
+			return -ENOMEM;
+		}
+		eq->elevator_data = nd;
 
-	nd = kmalloc_node(sizeof(*nd), GFP_KERNEL, q->node);
-	if (!nd) {
-		kobject_put(&eq->kobj);
-		return -ENOMEM;
+		INIT_LIST_HEAD(&nd->queue);
 	}
-	eq->elevator_data = nd;
-
-	INIT_LIST_HEAD(&nd->queue);
 
 	spin_lock_irq(q->queue_lock);
 	q->elevator = eq;
 	spin_unlock_irq(q->queue_lock);
+
+	printk("hello %s, id=%d, node=%d\n", e->elevator_name, q->id, q->node);
 	return 0;
 }
 
