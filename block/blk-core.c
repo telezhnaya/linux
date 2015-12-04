@@ -736,9 +736,19 @@ EXPORT_SYMBOL(blk_alloc_queue_node);
  *    when the block device is deactivated (such as at module unload).
  **/
 
+struct request_queue *global_q;
+bool first_time = true;
+
 struct request_queue *blk_init_queue(request_fn_proc *rfn, spinlock_t *lock)
 {
-	return blk_init_queue_node(rfn, lock, NUMA_NO_NODE);
+	spin_lock_irq(lock);
+	if (first_time)
+	{
+		global_q = blk_init_queue_node(rfn, lock, NUMA_NO_NODE);
+		first_time = false;
+	}
+	spin_unlock_irq(lock);
+	return global_q;
 }
 EXPORT_SYMBOL(blk_init_queue);
 
