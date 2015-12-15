@@ -34,15 +34,17 @@ static int noop_dispatch(struct request_queue *q, int force)
 
 int const buffer_size = 20;
 int statistics[20];
-bool first_time = true;
+int whole_stat = 0;
+int FULL = 0;
 
 static void noop_add_request(struct request_queue *q, struct request *rq)
 {
 	int id = q->id;
-	if (first_time)
+	whole_stat++;
+	if (whole_stat == FULL)
 	{
 		memset(statistics, 0, sizeof(int)*buffer_size);
-		first_time = false;
+		whole_stat = 0;
 	}
 	if (id >= buffer_size)
 		printk("PANIC, id=%d", id);
@@ -99,6 +101,7 @@ static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 	spin_lock_irq(q->queue_lock);
 	q->elevator = eq;
 	spin_unlock_irq(q->queue_lock);
+	FULL += 1000;
 	return 0;
 }
 
