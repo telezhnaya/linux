@@ -38,7 +38,7 @@ bool first_time = true;
 
 static void noop_add_request(struct request_queue *q, struct request *rq)
 {
-	id = q->id;
+	int id = q->id;
 	if (first_time)
 	{
 		memset(statistics, 0, sizeof(int)*buffer_size);
