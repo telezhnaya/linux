@@ -18,11 +18,21 @@ static void noop_merged_requests(struct request_queue *q, struct request *rq,
 	list_del_init(&next->queuelist);
 }
 
+int c = 0;
+
 static int noop_dispatch(struct request_queue *q, int force)
 {
 	struct noop_data *nd = q->elevator->elevator_data;
+	int cur_id = q->id;
+	c++;
 
 	if (!list_empty(&nd->queue)) {
+		if (c > 1000) {
+			blk_delay_queue(q, 10);
+			printk("aaaaa refuse, id=%d, c=%d\n", cur_id, c);
+			c = 0;
+			return 0;
+		}
 		struct request *rq;
 		rq = list_entry(nd->queue.next, struct request, queuelist);
 		list_del_init(&rq->queuelist);
@@ -45,12 +55,12 @@ static void noop_add_request(struct request_queue *q, struct request *rq)
 		first_time = false;
 	}
 	if (id >= buffer_size)
-		printk("PANIC, id=%d", id);
+		printk("aaaaa PANIC, id=%d\n", id);
 	else
 	{
 		statistics[id]++;
 		if (statistics[id] % 1000 == 1)
-			printk("request!, id=%d, count=%d\n", id, statistics[id]);
+			printk("aaaaa request!, id=%d, count=%d\n", id, statistics[id]);
 	}
 
 	struct noop_data *nd = q->elevator->elevator_data;
@@ -79,7 +89,7 @@ noop_latter_request(struct request_queue *q, struct request *rq)
 
 static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 {
-	printk("hello %s, id=%d\n", e->elevator_name, q->id);
+	printk("aaaaa hello %s, id=%d\n", e->elevator_name, q->id);
 	struct noop_data *nd;
 	struct elevator_queue *eq;
 
