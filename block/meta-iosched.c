@@ -14,19 +14,14 @@ struct queue_arr all = {0};
 struct queue_arr major = {0};
 
 bool add_queue(struct request_queue *q) {
-	struct request_queue **temp;
-
 	if (all.size > all.n_queues) {
 		all.queues[all.n_queues++] = q;
 		return true;
 	}
 
-	temp = kmalloc((all.n_queues + 1) * 2 * sizeof(q), GFP_KERNEL);
-	if (!temp) return false;
+	all.queues = krealloc(all.queues, (all.n_queues + 1) * 2 * sizeof(q), GFP_KERNEL);
+	if (!all.queues) return false;
 	all.size = (all.n_queues + 1) * 2;
-	memcpy(temp, all.queues, all.n_queues * sizeof(q));
-	kfree(all.queues);
-	all.queues = temp;
 	all.queues[all.n_queues++] = q;
 	return true;
 }
@@ -52,14 +47,16 @@ bool del_queue(struct request_queue *q) {
 	return del_queue2(all, q);
 }
 
-// Here must be smth smart :-)
+int whole_stat = 0;
+
 void print_stats(void) {
 	int i;
 	printk("Stats! ");
 	for (i = 0; i < all.n_queues; i++) {
-		printk("id=%d, ", all.queues[i]->id);
+		int t = all.queues[i]->stats[0] + all.queues[i]->stats[1] + all.queues[i]->stats[2];
+		printk("id=%d: load %d or %d%%, ", all.queues[i]->id, t, t * 100 / whole_stat);
 	}
-	printk("thats all.\n");
+	printk("whole = %d\n", whole_stat);
 }
 
 // This function returns 0 if queue must be dispatched now
@@ -72,4 +69,23 @@ int calc_time_to_sleep(struct request_queue *q) {
 			return 10; //Bad magician constant
 	}
 	return 0;
+}
+
+int group = 0;
+
+void clean_up(int level) {
+	int i;
+	for (i = 0; i < all.n_queues; i++) {
+		whole_stat -= all.queues[i]->stats[level];
+		all.queues[i]->stats[level] = 0;
+	}
+}
+
+void update_stats(struct request_queue *q) {
+	whole_stat++;
+	q->stats[group]++;
+	if (q->stats[group] > 1000) {
+		group = (group + 1) % 3;
+		clean_up(group);
+	}
 }

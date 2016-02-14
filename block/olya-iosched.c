@@ -12,6 +12,7 @@
 
 struct noop_data {
 	struct list_head queue;
+	struct request_queue *q;
 };
 
 static void noop_merged_requests(struct request_queue *q, struct request *rq,
@@ -89,7 +90,7 @@ static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 		return -ENOMEM;
 	}
 	eq->elevator_data = nd;
-
+	nd->q = q;
 	add_queue(q);
 
 	INIT_LIST_HEAD(&nd->queue);
@@ -104,8 +105,7 @@ static void noop_exit_queue(struct elevator_queue *e)
 {
 	struct noop_data *nd = e->elevator_data;
 
-	// del_queue(e); will not work because I have request_queue everywhere
-	// Here I have elevator_queue and I cannot get request_queue from it
+	del_queue(nd->q);
 
 	BUG_ON(!list_empty(&nd->queue));
 	kfree(nd);

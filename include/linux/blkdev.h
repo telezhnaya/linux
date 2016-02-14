@@ -353,6 +353,8 @@ struct request_queue {
 	 */
 	int			id;
 
+	int 			stats[3];
+
 	/*
 	 * queue needs bounce pages for pages above this limit
 	 */
