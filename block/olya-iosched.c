@@ -8,6 +8,8 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 
+#include "meta-iosched.h"
+
 struct noop_data {
 	struct list_head queue;
 };
@@ -18,12 +20,26 @@ static void noop_merged_requests(struct request_queue *q, struct request *rq,
 	list_del_init(&next->queuelist);
 }
 
+int temp = 0;
+
 static int noop_dispatch(struct request_queue *q, int force)
 {
+	int time;
+	struct request *rq;
 	struct noop_data *nd = q->elevator->elevator_data;
 
+	update_stats(q);
+	if (temp++ > 1000) {
+		print_stats();
+		temp = 0;
+	}
+
 	if (!list_empty(&nd->queue)) {
-		struct request *rq;
+		time = calc_time_to_sleep(q);
+		if (time != 0) {
+			blk_delay_queue(q, time);
+			return 0;
+		}
 		rq = list_entry(nd->queue.next, struct request, queuelist);
 		list_del_init(&rq->queuelist);
 		elv_dispatch_sort(q, rq);
@@ -32,27 +48,8 @@ static int noop_dispatch(struct request_queue *q, int force)
 	return 0;
 }
 
-int const buffer_size = 20;
-int statistics[20];
-bool first_time = true;
-
 static void noop_add_request(struct request_queue *q, struct request *rq)
 {
-	int id = q->id;
-	if (first_time)
-	{
-		memset(statistics, 0, sizeof(int)*buffer_size);
-		first_time = false;
-	}
-	if (id >= buffer_size)
-		printk("PANIC, id=%d", id);
-	else
-	{
-		statistics[id]++;
-		if (statistics[id] % 1000 == 1)
-			printk("request!, id=%d, count=%d\n", id, statistics[id]);
-	}
-
 	struct noop_data *nd = q->elevator->elevator_data;
 	list_add_tail(&rq->queuelist, &nd->queue);
 }
@@ -79,7 +76,6 @@ noop_latter_request(struct request_queue *q, struct request *rq)
 
 static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 {
-	printk("hello %s, id=%d\n", e->elevator_name, q->id);
 	struct noop_data *nd;
 	struct elevator_queue *eq;
 
@@ -94,6 +90,8 @@ static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 	}
 	eq->elevator_data = nd;
 
+	add_queue(q);
+
 	INIT_LIST_HEAD(&nd->queue);
 
 	spin_lock_irq(q->queue_lock);
@@ -105,6 +103,9 @@ static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 static void noop_exit_queue(struct elevator_queue *e)
 {
 	struct noop_data *nd = e->elevator_data;
+
+	// del_queue(e); will not work because I have request_queue everywhere
+	// Here I have elevator_queue and I cannot get request_queue from it
 
 	BUG_ON(!list_empty(&nd->queue));
 	kfree(nd);
