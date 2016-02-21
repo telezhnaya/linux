@@ -18,12 +18,19 @@ static void noop_merged_requests(struct request_queue *q, struct request *rq,
 	list_del_init(&next->queuelist);
 }
 
+int max_pending = 0;
+
 static int noop_dispatch(struct request_queue *q, int force)
 {
 	struct noop_data *nd = q->elevator->elevator_data;
 
 	if (!list_empty(&nd->queue)) {
 		struct request *rq;
+
+		if (q->nr_pending > max_pending) {
+			max_pending = q->nr_pending;
+			printk("id=%d, max_pending=%d\n", q->id, max_pending);
+		}
 		rq = list_entry(nd->queue.next, struct request, queuelist);
 		list_del_init(&rq->queuelist);
 		elv_dispatch_sort(q, rq);
