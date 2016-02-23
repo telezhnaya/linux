@@ -354,7 +354,7 @@ struct request_queue {
 	int			id;
 
 	int 			stats[3];
-
+	bool 			has_priority;
 	/*
 	 * queue needs bounce pages for pages above this limit
 	 */

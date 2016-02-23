@@ -79,6 +79,8 @@ static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 {
 	struct noop_data *nd;
 	struct elevator_queue *eq;
+	if (q->id == 8)
+		kobj_init();
 
 	eq = elevator_alloc(q, e);
 	if (!eq)

@@ -1,6 +1,8 @@
 #ifndef _META_IOSCHED_H
 #define _META_IOSCHED_H
 
+int kobj_init(void);
+
 bool add_queue(struct request_queue *q);
 bool del_queue(struct request_queue *q);
 
