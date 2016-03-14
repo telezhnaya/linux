@@ -13,6 +13,41 @@ struct queue_arr {
 
 static struct queue_arr all;
 
+static struct gendisk* disks[20];
+int n_disks = 0;
+
+void add_my_disk(struct gendisk* disk) {
+	if (n_disks < 20)
+		disks[n_disks++] = disk;
+	printk("aaaaa, disk %s added. N disks: %d\n", disk->disk_name, n_disks);
+}
+
+char* get_disk_name(struct request_queue* q) {
+	int i;
+	for(i = 0; i < n_disks; i++)
+		if (q == disks[i]->queue)
+			return disks[i]->disk_name;
+	return "";
+}
+
+struct request_queue* get_queue_by_name(char *name) {
+	int i, k;
+	for(i = 0; i < n_disks; i++) {
+		bool equals = true;
+		k = 0;
+		while (name[k] != 0 && name[k] != '\n' && disks[i]->disk_name[k] != 0) {
+			if (name[k] != disks[i]->disk_name[k]) {
+				equals = false;
+				break;
+			}
+			k++;
+		}
+		if (equals)
+			return disks[i]->queue;
+	}
+	return NULL;
+}
+
 struct kobject *group_kobj;
 
 static int interval;
@@ -60,26 +95,52 @@ static ssize_t ratio_store(struct kobject *kobj, struct kobj_attribute *attr,
 	return count;
 }
 
-static ssize_t names_show(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t high_prio_show(struct kobject *kobj, struct kobj_attribute *attr,
                         char *buf)
 {
 	int i;
 	int buf_ptr = 0;
-	/*for (i = 0; i < all.n_queues; i++)
-		if (all.queues[i]->last_merge) {
-			buf_ptr += sprintf(buf + buf_ptr, "%s\n",
-				all.queues[i]->last_merge->rq_disk->disk_name);
-			printk("success, %s", buf);
+	for (i = 0; i < all.n_queues; i++)
+		if (all.queues[i]->has_priority) {
+			buf_ptr += sprintf(buf + buf_ptr, "%s\n", get_disk_name(all.queues[i]));
 		}
-	printk("names_show %s\n", buf);*/
-	buf_ptr += sprintf(buf + buf_ptr, "%s\n", "hello!");
-        return buf_ptr;
+	return buf_ptr;
 }
 
-static ssize_t names_store(struct kobject *kobj, struct kobj_attribute *attr,
+static ssize_t high_prio_store(struct kobject *kobj, struct kobj_attribute *attr,
                          const char *buf, size_t count)
 {
-        printk("names_store trying to add %s\n", buf);
+	struct request_queue *q = get_queue_by_name(buf);
+	if (q)
+		q->has_priority = true;
+	else
+		printk("aaaaa wtf high cannot understand %s!!!\n", buf);
+        printk("aaaaa high trying to add %s\n", buf);
+        return count;
+}
+
+
+static ssize_t low_prio_show(struct kobject *kobj, struct kobj_attribute *attr,
+                        char *buf)
+{
+	int i;
+	int buf_ptr = 0;
+	for (i = 0; i < all.n_queues; i++)
+		if (!all.queues[i]->has_priority) {
+			buf_ptr += sprintf(buf + buf_ptr, "%s\n", get_disk_name(all.queues[i]));
+		}
+	return buf_ptr;
+}
+
+static ssize_t low_prio_store(struct kobject *kobj, struct kobj_attribute *attr,
+                         const char *buf, size_t count)
+{
+	struct request_queue *q = get_queue_by_name(buf);
+	if (q)
+		q->has_priority = false;
+	else
+		printk("aaaaa wtf low cannot understand %s!!!\n", buf);
+        printk("aaaaa low trying to add %s\n", buf);
         return count;
 }
 
@@ -91,10 +152,10 @@ static struct kobj_attribute ratio_attribute =
 	__ATTR(ratio, 0664, ratio_show, ratio_store);
 
 static struct kobj_attribute low_prio_attribute =
-	__ATTR(low_prio, 0664, names_show, names_store);
+	__ATTR(low_prio, 0664, low_prio_show, low_prio_store);
 
 static struct kobj_attribute high_prio_attribute =
-	__ATTR(high_prio, 0664, names_show, names_store);
+	__ATTR(high_prio, 0664, high_prio_show, high_prio_store);
 
 static struct attribute *attrs[] = {
 	&interval_attribute.attr,
@@ -114,6 +175,8 @@ int kobj_init(void) {
 		return -ENOMEM;
 	return sysfs_create_group(group_kobj, &attr_group);
 }
+
+
 
 bool add_queue(struct request_queue *q) {
 	if (all.size > all.n_queues) {

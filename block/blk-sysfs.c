@@ -10,7 +10,7 @@
 #include <linux/blktrace_api.h>
 #include <linux/blk-mq.h>
 #include <linux/blk-cgroup.h>
-
+#include "meta-iosched.h"
 #include "blk.h"
 #include "blk-mq.h"
 
@@ -540,6 +540,7 @@ struct kobj_type blk_queue_ktype = {
 
 int blk_register_queue(struct gendisk *disk)
 {
+	add_my_disk(disk);
 	int ret;
 	struct device *dev = disk_to_dev(disk);
 	struct request_queue *q = disk->queue;

@@ -1,6 +1,7 @@
 #ifndef _META_IOSCHED_H
 #define _META_IOSCHED_H
 
+void add_my_disk(struct gendisk* disk);
 int kobj_init(void);
 
 bool add_queue(struct request_queue *q);
