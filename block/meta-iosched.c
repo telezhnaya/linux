@@ -56,6 +56,7 @@ static int interval;
 static int ratio;
 static int low_prio; // need these variables only for making kobj_attributes with good names
 static int high_prio;
+static int stats;
 
 static ssize_t interval_show(struct kobject *kobj, struct kobj_attribute *attr,
 			char *buf)
@@ -146,6 +147,21 @@ static ssize_t low_prio_store(struct kobject *kobj, struct kobj_attribute *attr,
         return count;
 }
 
+char my_stats[1000000];
+int stats_ptr = 0;
+
+static ssize_t stats_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf)
+{
+	return sprintf(buf, "%s\n", my_stats);
+}
+
+static ssize_t stats_store(struct kobject *kobj, struct kobj_attribute *attr,
+			 const char *buf, size_t count)
+{
+	return count;
+}
+
 
 static struct kobj_attribute interval_attribute =
 	__ATTR(interval, 0664, interval_show, interval_store);
@@ -159,11 +175,15 @@ static struct kobj_attribute low_prio_attribute =
 static struct kobj_attribute high_prio_attribute =
 	__ATTR(high_prio, 0664, high_prio_show, high_prio_store);
 
+static struct kobj_attribute stats_attribute =
+	__ATTR(stats, 0664, stats_show, stats_store);
+
 static struct attribute *attrs[] = {
 	&interval_attribute.attr,
 	&ratio_attribute.attr,
 	&low_prio_attribute.attr,
 	&high_prio_attribute.attr,
+	&stats_attribute.attr,
 	NULL,
 };
 
@@ -177,8 +197,6 @@ int kobj_init(void) {
 		return -ENOMEM;
 	return sysfs_create_group(group_kobj, &attr_group);
 }
-
-
 
 bool add_queue(struct request_queue *q) {
 	if (all.size > all.n_queues) {
@@ -213,14 +231,15 @@ int whole_stat = 0;
 
 void print_stats(unsigned long unused) {
 	int i;
-	printk("aaaaa Stats! ");
+	stats_ptr += sprintf(my_stats + stats_ptr, "time=%u\tid\tload\tpercent\t(whole=%d)\n",
+				jiffies, whole_stat);
 	for (i = 0; i < all.n_queues; i++) {
 		int t = all.queues[i]->stats[0] + all.queues[i]->stats[1] + all.queues[i]->stats[2];
-		printk("id=%d: load %d or %d%%, ", all.queues[i]->id, t, t * 100 / whole_stat);
+		stats_ptr += sprintf(my_stats + stats_ptr, "\t\t%d\t%d\t%d\n",
+			all.queues[i]->id, t, t * 100 / (whole_stat + 1));
 	}
-	printk("whole = %d\n", whole_stat);
-	printk("aaaaa stats interval=%d, ratio=%d\n", interval, ratio);
-	//init_my_timer();
+	my_stats[stats_ptr] = 0;
+	init_my_timer();
 }
 
 // This function returns 0 if queue must be dispatched now
@@ -254,10 +273,11 @@ void update_stats(struct request_queue *q) {
 	}
 }
 
+struct timer_list my_timer;
+
 void init_my_timer(void) {
-	struct timer_list my_timer;
 	init_timer(&my_timer);
-	my_timer.expires = jiffies + 40 * HZ; // after 40 seconds
+	my_timer.expires = jiffies + 10 * HZ; // after 10 seconds
 	my_timer.data = 0;
 	my_timer.function = print_stats;
 	add_timer(&my_timer);
