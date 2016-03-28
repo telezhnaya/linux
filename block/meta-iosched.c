@@ -2,6 +2,8 @@
 #include <linux/elevator.h>
 #include <linux/slab.h>
 #include <linux/genhd.h>
+#include <linux/timer.h>
+#include <linux/jiffies.h>
 
 #include "meta-iosched.h"
 
@@ -209,15 +211,16 @@ bool del_queue(struct request_queue *q) {
 
 int whole_stat = 0;
 
-void print_stats(void) {
+void print_stats(unsigned long unused) {
 	int i;
-	printk("Stats! ");
+	printk("aaaaa Stats! ");
 	for (i = 0; i < all.n_queues; i++) {
 		int t = all.queues[i]->stats[0] + all.queues[i]->stats[1] + all.queues[i]->stats[2];
 		printk("id=%d: load %d or %d%%, ", all.queues[i]->id, t, t * 100 / whole_stat);
 	}
 	printk("whole = %d\n", whole_stat);
-	printk("stats interval=%d, ratio=%d\n", interval, ratio);
+	printk("aaaaa stats interval=%d, ratio=%d\n", interval, ratio);
+	//init_my_timer();
 }
 
 // This function returns 0 if queue must be dispatched now
@@ -249,4 +252,13 @@ void update_stats(struct request_queue *q) {
 		group = (group + 1) % 3;
 		clean_up(group);
 	}
+}
+
+void init_my_timer(void) {
+	struct timer_list my_timer;
+	init_timer(&my_timer);
+	my_timer.expires = jiffies + 40 * HZ; // after 40 seconds
+	my_timer.data = 0;
+	my_timer.function = print_stats;
+	add_timer(&my_timer);
 }
