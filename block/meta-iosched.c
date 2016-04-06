@@ -240,7 +240,7 @@ void print_stats(unsigned long unused) {
 			all.queues[i]->id, t, t * 100 / (whole_stat + 1));
 	}
 	my_stats[printed] = 0;
-	printk(KERN_DEBUG my_stats);
+	printk(my_stats);
 	init_my_timer();
 }
 
@@ -258,16 +258,16 @@ int calc_time_to_sleep(struct request_queue *q) {
 
 int group = 0;
 
-spinlock_t *stat_lock;
-spin_lock_init(stat_lock);
+spinlock_t stat_lock;
+DEFINE_SPINLOCK(stat_lock);
 
 void clean_up(unsigned long unused) {
 	int i;
 	int level = (group + 1) % 3;
 	for (i = 0; i < all.n_queues; i++) {
-		spin_lock(stat_lock);
+		spin_lock(&stat_lock);
 		whole_stat -= all.queues[i]->stats[level];
-		spin_unlock(stat_lock);
+		spin_unlock(&stat_lock);
 		all.queues[i]->stats[level] = 0;
 	}
 	group = level;
@@ -275,9 +275,9 @@ void clean_up(unsigned long unused) {
 }
 
 void update_stats(struct request_queue *q) {
-	spin_lock(stat_lock);
+	spin_lock(&stat_lock);
 	whole_stat++;
-	spin_unlock(stat_lock);
+	spin_unlock(&stat_lock);
 	q->stats[group]++;
 }
 
