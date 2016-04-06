@@ -147,8 +147,7 @@ static ssize_t low_prio_store(struct kobject *kobj, struct kobj_attribute *attr,
         return count;
 }
 
-char my_stats[1000000];
-int stats_ptr = 0;
+char my_stats[1000];
 
 static ssize_t stats_show(struct kobject *kobj, struct kobj_attribute *attr,
 			char *buf)
@@ -231,14 +230,17 @@ int whole_stat = 0;
 
 void print_stats(unsigned long unused) {
 	int i;
-	stats_ptr += sprintf(my_stats + stats_ptr, "time=%u\tid\tload\tpercent\t(whole=%d)\n",
+	int printed = sprintf(my_stats, "aaaaa time=%u\tid\tload\tpercent\t(whole=%d)\n",
 				jiffies, whole_stat);
+	// all numbers will not be matched because of continuing of IO processes
+	// there need a synchronization for an ideal statistics
 	for (i = 0; i < all.n_queues; i++) {
 		int t = all.queues[i]->stats[0] + all.queues[i]->stats[1] + all.queues[i]->stats[2];
-		stats_ptr += sprintf(my_stats + stats_ptr, "\t\t%d\t%d\t%d\n",
+		printed += sprintf(my_stats + printed, "aaaaa \t\t%d\t%d\t%d\n",
 			all.queues[i]->id, t, t * 100 / (whole_stat + 1));
 	}
-	my_stats[stats_ptr] = 0;
+	my_stats[printed] = 0;
+	printk(KERN_DEBUG my_stats);
 	init_my_timer();
 }
 
@@ -256,21 +258,27 @@ int calc_time_to_sleep(struct request_queue *q) {
 
 int group = 0;
 
-void clean_up(int level) {
+spinlock_t *stat_lock;
+spin_lock_init(stat_lock);
+
+void clean_up(unsigned long unused) {
 	int i;
+	int level = (group + 1) % 3;
 	for (i = 0; i < all.n_queues; i++) {
+		spin_lock(stat_lock);
 		whole_stat -= all.queues[i]->stats[level];
+		spin_unlock(stat_lock);
 		all.queues[i]->stats[level] = 0;
 	}
+	group = level;
+	init_my_switch_timer();
 }
 
 void update_stats(struct request_queue *q) {
+	spin_lock(stat_lock);
 	whole_stat++;
+	spin_unlock(stat_lock);
 	q->stats[group]++;
-	if (q->stats[group] > 1000) {
-		group = (group + 1) % 3;
-		clean_up(group);
-	}
 }
 
 struct timer_list my_timer;
@@ -281,4 +289,15 @@ void init_my_timer(void) {
 	my_timer.data = 0;
 	my_timer.function = print_stats;
 	add_timer(&my_timer);
+}
+
+struct timer_list my_switch_timer;
+
+void init_my_switch_timer(void) {
+	init_timer(&my_switch_timer);
+	my_switch_timer.expires = jiffies + 4 * HZ; // 3 buffers. Current stat is 10 seconds
+	// 4 means piece of stat from 8 to 12 seconds.
+	my_switch_timer.data = 0;
+	my_switch_timer.function = clean_up;
+	add_timer(&my_switch_timer);
 }
