@@ -15,13 +15,22 @@ struct queue_arr {
 
 static struct queue_arr all;
 
-static struct gendisk* disks[20];
+static struct gendisk** disks;
 int n_disks = 0;
+int disks_size = 0;
 
-void add_my_disk(struct gendisk* disk) {
-	if (n_disks < 20)
+bool add_my_disk(struct gendisk* disk) {
+	printk("aaaaa, disk %s will be added. N disks: %d\n", disk->disk_name, n_disks);
+	if (disks_size > n_disks) {
 		disks[n_disks++] = disk;
-	printk("aaaaa, disk %s added. N disks: %d\n", disk->disk_name, n_disks);
+		return true;
+	}
+
+	disks = krealloc(disks, (n_disks + 1) * 2 * sizeof(disk), GFP_KERNEL);
+	if (!disks) return false;
+	disks_size = (n_disks + 1) * 2;
+	disks[n_disks++] = disk;
+	return true;
 }
 
 char* get_disk_name(struct request_queue* q) {
