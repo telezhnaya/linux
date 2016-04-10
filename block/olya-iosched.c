@@ -21,26 +21,18 @@ static void noop_merged_requests(struct request_queue *q, struct request *rq,
 	list_del_init(&next->queuelist);
 }
 
-int temp = 0;
-
 static int noop_dispatch(struct request_queue *q, int force)
 {
-	int time;
-	struct request *rq;
 	struct noop_data *nd = q->elevator->elevator_data;
-
 	update_stats(q);
-	if (temp++ > 1000) {
-		print_stats();
-		temp = 0;
-	}
 
 	if (!list_empty(&nd->queue)) {
-		time = calc_time_to_sleep(q);
+		int time = calc_time_to_sleep(q);
 		if (time != 0) {
 			blk_delay_queue(q, time);
 			return 0;
 		}
+		struct request *rq;
 		rq = list_entry(nd->queue.next, struct request, queuelist);
 		list_del_init(&rq->queuelist);
 		elv_dispatch_sort(q, rq);
@@ -79,8 +71,11 @@ static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 {
 	struct noop_data *nd;
 	struct elevator_queue *eq;
-	if (q->id == 8)
+	if (q->id == 8) {
 		kobj_init();
+		init_my_timer();
+		init_my_switch_timer();
+	}
 
 	eq = elevator_alloc(q, e);
 	if (!eq)
@@ -92,6 +87,7 @@ static int noop_init_queue(struct request_queue *q, struct elevator_type *e)
 		return -ENOMEM;
 	}
 	eq->elevator_data = nd;
+
 	nd->q = q;
 	add_queue(q);
 
