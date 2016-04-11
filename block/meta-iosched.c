@@ -62,7 +62,7 @@ struct request_queue* get_queue_by_name(char *name) {
 
 struct kobject *group_kobj;
 
-static int interval;
+static int interval = 10000;
 static int ratio;
 static int low_prio; // need these variables only for making kobj_attributes with good names
 static int high_prio;
@@ -82,6 +82,7 @@ static ssize_t interval_store(struct kobject *kobj, struct kobj_attribute *attr,
 	printk("interval_store was %d\n", interval);
 
 	ret = kstrtoint(buf, 10, &interval);
+	if (interval < 100) interval = 10000;
 	printk("interval_store is now %d\n", interval);
 
 	if (ret < 0)
@@ -285,10 +286,10 @@ void print_stats(unsigned long unused) {
 // Otherwise it calculates amount of time to sleep
 int calc_time_to_sleep(struct request_queue *q) {
 	int i;
-	if (q->has_priority) return 0; // This queue has priority
+	if (q->has_priority) return 0;
 	for (i = 0; i < all.n_queues; i++) {
 		if (all.queues[i]->has_priority && all.queues[i]->nr_pending > 0)
-			return 10; //Bad magician constant
+			return interval / 100;
 	}
 	return 0;
 }
@@ -328,7 +329,7 @@ struct timer_list my_timer;
 
 void init_my_timer(void) {
 	init_timer(&my_timer);
-	my_timer.expires = jiffies + 10 * HZ; // after 10 seconds
+	my_timer.expires = jiffies + interval * HZ / 1000;
 	my_timer.data = 0;
 	my_timer.function = print_stats;
 	add_timer(&my_timer);
@@ -338,8 +339,11 @@ struct timer_list my_switch_timer;
 
 void init_my_switch_timer(void) {
 	init_timer(&my_switch_timer);
-	my_switch_timer.expires = jiffies + 4 * HZ; // 3 buffers. Current stat is 10 seconds
-	// 4 means piece of stat from 8 to 12 seconds.
+	// We have 2 buffers with partial statistics. We want to have statistics from the last
+	// interval of time. Imagine interval = 1.5 * x. We are able to get statistics from x to 2 * x
+	// moment. So we need to switch our timer every interval * 2 / 3 / 1000 seconds
+	// (interval storing time in msecs)
+	my_switch_timer.expires = jiffies + interval * HZ * 2 / 3000;
 	my_switch_timer.data = 0;
 	my_switch_timer.function = clean_up;
 	add_timer(&my_switch_timer);
