@@ -63,10 +63,15 @@ struct request_queue* get_queue_by_name(char *name) {
 struct kobject *group_kobj;
 
 static int interval = 10000;
-static int ratio;
+static int ratio = 80;
 static int low_prio; // need these variables only for making kobj_attributes with good names
 static int high_prio;
 static int stats;
+
+
+int whole_prio_stat = 0;
+spinlock_t prio_stat_lock;
+DEFINE_SPINLOCK(prio_stat_lock);
 
 static ssize_t interval_show(struct kobject *kobj, struct kobj_attribute *attr,
 			char *buf)
@@ -103,6 +108,7 @@ static ssize_t ratio_store(struct kobject *kobj, struct kobj_attribute *attr,
 	int ret;
 
 	ret = kstrtoint(buf, 10, &ratio);
+	if (ratio <= 0) ratio = 20;
 	if (ret < 0)
 		return ret;
 
@@ -125,9 +131,14 @@ static ssize_t high_prio_store(struct kobject *kobj, struct kobj_attribute *attr
                          const char *buf, size_t count)
 {
 	struct request_queue *q = get_queue_by_name(buf);
-	if (q)
-		q->has_priority = true;
-	else
+	if (q) {
+		if (!q->has_priority) {
+			spin_lock(&prio_stat_lock);
+			q->has_priority = true;
+			whole_prio_stat += q->stats[0] + q->stats[1];
+			spin_unlock(&prio_stat_lock);
+		}
+	} else
 		printk("aaaaa wtf high cannot understand %s!!!\n", buf);
         printk("aaaaa high trying to add %s\n", buf);
         return count;
@@ -150,9 +161,14 @@ static ssize_t low_prio_store(struct kobject *kobj, struct kobj_attribute *attr,
                          const char *buf, size_t count)
 {
 	struct request_queue *q = get_queue_by_name(buf);
-	if (q)
-		q->has_priority = false;
-	else
+	if (q) {
+		if (!q->has_priority) {
+			spin_lock(&prio_stat_lock);
+			whole_prio_stat -= q->stats[0] + q->stats[1];
+			q->has_priority = false;
+			spin_unlock(&prio_stat_lock);
+		}
+	} else
 		printk("aaaaa wtf low cannot understand %s!!!\n", buf);
         printk("aaaaa low trying to add %s\n", buf);
         return count;
@@ -270,10 +286,11 @@ int get_snapshot(int honest) {
 void print_stats(unsigned long unused) {
 	int i;
 	int n_try = get_snapshot(20);
-	int printed = sprintf(my_stats, "aaaaa time=%u\tid\tload\tpercent\t(whole=%d, try=%d)\n",
-				jiffies, whole_stat, n_try);
+	int printed = sprintf(my_stats,
+		"aaaaa time=%u\tid\tload\tpercent\t(whole=%d, try=%d, whole_prio=%d)\n",
+				jiffies, whole_stat, n_try, whole_prio_stat);
 	for (i = 0; i < all.n_queues; i++) {
-		printed += sprintf(my_stats + printed, "aaaaa \t\t%d\t%d\t%d\t%d\n",
+		printed += sprintf(my_stats + printed, "aaaaa \t\t\t%d\t%d\t%d\t%d\n",
 			all.queues[i]->id, all.stats[i], all.stats[i] * 100 / (whole_stat + 1),
 			all.queues[i]->queue_lock);
 	}
@@ -286,7 +303,7 @@ void print_stats(unsigned long unused) {
 // Otherwise it calculates amount of time to sleep
 int calc_time_to_sleep(struct request_queue *q) {
 	int i;
-	if (q->has_priority) return 0;
+	if (q->has_priority || whole_prio_stat * 100 / whole_stat > ratio) return 0;
 	for (i = 0; i < all.n_queues; i++) {
 		if (all.queues[i]->has_priority && all.queues[i]->nr_pending > 0)
 			return interval / 100;
@@ -310,6 +327,12 @@ void clean_up(unsigned long unused) {
 		spin_lock(all.queues[i]->queue_lock);
 		all.queues[i]->stats[2] -= all.queues[i]->stats[level];
 		spin_unlock(all.queues[i]->queue_lock);
+
+		if (all.queues[i]->has_priority) {
+			spin_lock(&prio_stat_lock);
+			whole_prio_stat -= all.queues[i]->stats[level];
+			spin_unlock(&prio_stat_lock);
+		}
 		all.queues[i]->stats[level] = 0;
 	}
 	group = level;
@@ -320,8 +343,14 @@ void update_stats(struct request_queue *q) {
 	spin_lock(&stat_lock);
 	whole_stat++;
 	spin_unlock(&stat_lock);
-	q->stats[group]++;
 
+	if (q->has_priority) {
+		spin_lock(&prio_stat_lock);
+		whole_prio_stat++;
+		spin_unlock(&prio_stat_lock);
+	}
+
+	q->stats[group]++;
 	q->stats[2]++;
 }
 
