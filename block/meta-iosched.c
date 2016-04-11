@@ -306,9 +306,9 @@ void clean_up(unsigned long unused) {
 		whole_stat -= all.queues[i]->stats[level];
 		spin_unlock(&stat_lock);
 
-		//spin_lock(all.queues[i]->queue_lock); //spin_lock_irq(all.queues[i]->queue_lock);
+		spin_lock(all.queues[i]->queue_lock);
 		all.queues[i]->stats[2] -= all.queues[i]->stats[level];
-		//spin_unlock(all.queues[i]->queue_lock); //spin_unlock_irq(all.queues[i]->queue_lock);
+		spin_unlock(all.queues[i]->queue_lock);
 		all.queues[i]->stats[level] = 0;
 	}
 	group = level;
@@ -321,9 +321,7 @@ void update_stats(struct request_queue *q) {
 	spin_unlock(&stat_lock);
 	q->stats[group]++;
 
-	//spin_lock(q->queue_lock); //spin_lock_irq(q->queue_lock);
 	q->stats[2]++;
-	//spin_unlock(q->queue_lock); //spin_unlock_irq(q->queue_lock);
 }
 
 struct timer_list my_timer;
