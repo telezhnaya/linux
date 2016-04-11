@@ -9,6 +9,7 @@
 
 struct queue_arr {
 	struct request_queue **queues;
+	int *stats;
 	int n_queues;
 	int size;
 };
@@ -208,13 +209,16 @@ int kobj_init(void) {
 
 bool add_queue(struct request_queue *q) {
 	if (all.size > all.n_queues) {
+		all.stats[all.n_queues] = 0;
 		all.queues[all.n_queues++] = q;
 		return true;
 	}
 
+	all.stats = krealloc(all.stats, (all.n_queues + 1) * 2 * sizeof(int), GFP_KERNEL);
 	all.queues = krealloc(all.queues, (all.n_queues + 1) * 2 * sizeof(q), GFP_KERNEL);
-	if (!all.queues) return false;
+	if (!all.queues || !all.stats) return false;
 	all.size = (all.n_queues + 1) * 2;
+	all.stats[all.n_queues] = 0;
 	all.queues[all.n_queues++] = q;
 	return true;
 }
@@ -231,22 +235,46 @@ bool del_queue(struct request_queue *q) {
 	pos = find_queue(all, q);
 	if (pos == -1) return false;
 	all.queues[pos] = all.queues[all.n_queues - 1];
+	all.stats[pos] = all.stats[all.n_queues - 1];
 	all.n_queues--;
 	return true;
 }
 
 int whole_stat = 0;
 
+// Trying to get shapshot from all our queue statistics.
+// while(honest--) is something like while(true)
+// but performance is much more important than absolute honesty
+int get_snapshot(int honest) {
+	int i, s = 0;
+	for (i = 0; i < all.n_queues; i++) {
+		all.stats[i] = all.queues[i]->stats[2];
+	}
+	bool success;
+
+	while(s < honest) {
+		success = true;
+		for (i = 0; i < all.n_queues; i++) {
+			if (all.stats[i] != all.queues[i]->stats[2]) {
+				success = false;
+				all.stats[i] = all.queues[i]->stats[2];
+			}
+		}
+		if (success) return s;
+		s++;
+	}
+	return s;
+}
+
 void print_stats(unsigned long unused) {
 	int i;
-	int printed = sprintf(my_stats, "aaaaa time=%u\tid\tload\tpercent\t(whole=%d)\n",
-				jiffies, whole_stat);
-	// all numbers will not be matched because of continuing of IO processes
-	// there need a synchronization for an ideal statistics
+	int n_try = get_snapshot(20);
+	int printed = sprintf(my_stats, "aaaaa time=%u\tid\tload\tpercent\t(whole=%d, try=%d)\n",
+				jiffies, whole_stat, n_try);
 	for (i = 0; i < all.n_queues; i++) {
-		int t = all.queues[i]->stats[0] + all.queues[i]->stats[1] + all.queues[i]->stats[2];
-		printed += sprintf(my_stats + printed, "aaaaa \t\t%d\t%d\t%d\n",
-			all.queues[i]->id, t, t * 100 / (whole_stat + 1));
+		printed += sprintf(my_stats + printed, "aaaaa \t\t%d\t%d\t%d\t%d\n",
+			all.queues[i]->id, all.stats[i], all.stats[i] * 100 / (whole_stat + 1),
+			all.queues[i]->queue_lock);
 	}
 	my_stats[printed] = 0;
 	printk(my_stats);
@@ -272,11 +300,15 @@ DEFINE_SPINLOCK(stat_lock);
 
 void clean_up(unsigned long unused) {
 	int i;
-	int level = (group + 1) % 3;
+	int level = (group + 1) % 2;
 	for (i = 0; i < all.n_queues; i++) {
 		spin_lock(&stat_lock);
 		whole_stat -= all.queues[i]->stats[level];
 		spin_unlock(&stat_lock);
+
+		//spin_lock(all.queues[i]->queue_lock); //spin_lock_irq(all.queues[i]->queue_lock);
+		all.queues[i]->stats[2] -= all.queues[i]->stats[level];
+		//spin_unlock(all.queues[i]->queue_lock); //spin_unlock_irq(all.queues[i]->queue_lock);
 		all.queues[i]->stats[level] = 0;
 	}
 	group = level;
@@ -288,6 +320,10 @@ void update_stats(struct request_queue *q) {
 	whole_stat++;
 	spin_unlock(&stat_lock);
 	q->stats[group]++;
+
+	//spin_lock(q->queue_lock); //spin_lock_irq(q->queue_lock);
+	q->stats[2]++;
+	//spin_unlock(q->queue_lock); //spin_unlock_irq(q->queue_lock);
 }
 
 struct timer_list my_timer;
