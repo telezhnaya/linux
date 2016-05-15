@@ -271,12 +271,13 @@ void print_stats(unsigned long unused) {
 	int i, printed, n_try = get_snapshot(20);
 
 	printed = sprintf(my_stats,
-		"aaa time=%u\tid\tload\tpercent\t(whole=%d, try=%d, whole_prio=%d)\n",
-				jiffies, whole_stat, n_try, whole_prio_stat);
+		"aaa time=%u\tid\tload\tpercent\n", jiffies);
 	for (i = 0; i < all.n_queues; i++) {
-		printed += sprintf(my_stats + printed, "aaa \t\t\t%d\t%d\t%d\n",
-			all.queues[i]->id, all.stats[i], all.stats[i] * 100 / (whole_stat + 1));
+		printed += sprintf(my_stats + printed, "aaa \t\t\t%s\t%d\t%d\n",
+			get_disk_name(all.queues[i]),
+			all.stats[i], all.stats[i] * 100 / (whole_stat + 1));
 	}
+	printed += sprintf(my_stats + printed, "aaa\n");
 	my_stats[printed] = 0;
 	printk(my_stats);
 	init_my_timer();
